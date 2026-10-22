@@ -36,7 +36,6 @@ class User:
             registration_date=datetime.now(),
         )
 
-  
     @property
     def user_id(self) -> int:
         return self._user_id
@@ -81,7 +80,6 @@ class User:
                 f"Пароль должен быть не короче {User.MIN_PASSWORD_LENGTH} символов"
             )
 
-
     def get_user_info(self) -> str:
         """Выводит информацию о пользователе (без пароля)."""
         info = (
@@ -102,7 +100,6 @@ class User:
         """Проверяет, совпадает ли введённый пароль с сохранённым хешем."""
         return self._hash_password(password, self._salt) == self._hashed_password
 
-
     def to_dict(self) -> dict:
         return {
             "user_id": self._user_id,
@@ -122,14 +119,14 @@ class User:
             registration_date=datetime.fromisoformat(data["registration_date"]),
         )
 
+
 class Wallet:
     """Кошелёк пользователя для одной конкретной валюты."""
 
     def __init__(self, currency_code: str, balance: float = 0.0) -> None:
         self.currency_code = self._validate_currency_code(currency_code)
         self._balance = 0.0
-        self.balance = balance  
-
+        self.balance = balance
 
     @property
     def balance(self) -> float:
@@ -143,7 +140,6 @@ class Wallet:
             raise ValueError("Баланс не может быть отрицательным")
         self._balance = float(value)
 
-
     @staticmethod
     def _validate_currency_code(currency_code: str) -> str:
         if not currency_code or not currency_code.strip():
@@ -156,7 +152,6 @@ class Wallet:
             raise TypeError("'amount' должен быть числом")
         if amount <= 0:
             raise ValueError("'amount' должен быть положительным числом")
-
 
     def deposit(self, amount: float) -> None:
         """Пополняет баланс на указанную сумму."""
@@ -179,7 +174,6 @@ class Wallet:
         print(info)
         return info
 
-
     def to_dict(self) -> dict:
         return {
             "currency_code": self.currency_code,
@@ -192,6 +186,7 @@ class Wallet:
             currency_code=data["currency_code"],
             balance=data["balance"],
         )
+
 
 class Portfolio:
     """Управление всеми кошельками одного пользователя."""
@@ -209,7 +204,6 @@ class Portfolio:
         self._user_id = user_id
         self._wallets: dict[str, Wallet] = wallets or {}
 
-
     @property
     def user(self) -> int:
         """Возвращает идентификатор владельца портфеля (без возможности перезаписи)."""
@@ -219,7 +213,6 @@ class Portfolio:
     def wallets(self) -> dict[str, Wallet]:
         """Возвращает копию словаря кошельков."""
         return dict(self._wallets)
-
 
     def add_currency(self, currency_code: str) -> Wallet:
         """Добавляет новый кошелёк в портфель, если его ещё нет."""
@@ -234,7 +227,7 @@ class Portfolio:
         """Возвращает объект Wallet по коду валюты."""
         code = currency_code.upper()
         if code not in self._wallets:
-            raise KeyError(f"У вас нет кошелька '{code}'")
+            raise LookupError(f"У вас нет кошелька '{code}'")
         return self._wallets[code]
 
     def get_total_value(self, base_currency: str = "USD") -> float:
@@ -252,7 +245,6 @@ class Portfolio:
 
         base_rate = self.exchange_rates[base_currency]
         return total_in_usd / base_rate
-
 
     def to_dict(self) -> dict:
         return {

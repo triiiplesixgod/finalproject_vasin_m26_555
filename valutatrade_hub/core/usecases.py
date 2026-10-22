@@ -31,7 +31,6 @@ class AuthSession:
         return self._current_user
 
 
-
 def load_users() -> list[User]:
     raw_users = utils.load_json(utils.USERS_FILE, default=[])
     return [User.from_dict(item) for item in raw_users]
@@ -46,7 +45,6 @@ def find_user_by_username(users: list[User], username: str) -> User | None:
         if user.username == username:
             return user
     return None
-
 
 
 def load_portfolios() -> list[Portfolio]:
@@ -69,7 +67,8 @@ def find_portfolio_by_user_id(
     return None
 
 
-#Команда register 
+# Команда register
+
 
 def register_user(username: str, password: str) -> str:
     """Регистрирует нового пользователя и создаёт для него пустой портфель."""
@@ -94,7 +93,7 @@ def register_user(username: str, password: str) -> str:
     )
 
 
-#Команда login
+# Команда login
 
 
 def login_user(session: AuthSession, username: str, password: str) -> str:
@@ -112,14 +111,16 @@ def login_user(session: AuthSession, username: str, password: str) -> str:
     return f"Вы вошли как '{username}'"
 
 
+# Курсы валют
 
-#Курсы валют
 
 def _compute_fallback_rate(from_currency: str, to_currency: str) -> float:
     """Вычисляет курс через фиксированные курсы к USD."""
     rates_to_usd = Portfolio.exchange_rates
     if from_currency not in rates_to_usd or to_currency not in rates_to_usd:
-        raise LookupError(f"Не удалось получить курс для {from_currency}->{to_currency}")
+        raise LookupError(
+            f"Не удалось получить курс для {from_currency}->{to_currency}"
+        )
     return rates_to_usd[from_currency] / rates_to_usd[to_currency]
 
 
@@ -176,8 +177,8 @@ def get_rate_command(from_currency: str, to_currency: str) -> str:
     )
 
 
+# Команда show-portfolio
 
-#Команда show-portfolio
 
 def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
     user = session.require_login()
@@ -198,7 +199,9 @@ def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
             Portfolio.exchange_rates[code] / Portfolio.exchange_rates[base_currency]
         )
         value_in_base = wallet.balance * rate_to_base
-        lines.append(f"- {code}: {wallet.balance:.4f}  -> {value_in_base:.2f} {base_currency}")
+        lines.append(
+            f"- {code}: {wallet.balance:.4f}  -> {value_in_base:.2f} {base_currency}"
+        )
 
     total = portfolio.get_total_value(base_currency)
     lines.append("-" * 35)
@@ -207,8 +210,8 @@ def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
     return "\n".join(lines)
 
 
+# Команда buy
 
-#Команда buy
 
 def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str:
     """Покупает валюту currency_code за USD."""
@@ -234,14 +237,14 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
 
     try:
         usd_wallet = portfolio.get_wallet("USD")
-    except KeyError:
+    except LookupError:
         usd_wallet = portfolio.add_currency("USD")
 
     usd_wallet.withdraw(cost)  # выбросит ValueError, если средств не хватает
 
     try:
         target_wallet = portfolio.get_wallet(currency_code)
-    except KeyError:
+    except LookupError:
         target_wallet = portfolio.add_currency(currency_code)
 
     old_balance = target_wallet.balance
@@ -253,14 +256,15 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
         f"Покупка выполнена: {amount:.4f} {currency_code} по курсу "
         f"{rate:.2f} USD/{currency_code}\n"
         f"Изменения в портфеле:\n"
-        f"- {currency_code}: было {old_balance:.4f} -> стало {target_wallet.balance:.4f}\n"
+        f"- {currency_code}: было {old_balance:.4f} "
+        f"-> стало {target_wallet.balance:.4f}\n"
         f"- USD: списано {cost:,.2f}\n"
         f"Оценочная стоимость покупки: {cost:,.2f} USD"
     )
 
 
+# Команда sell
 
-#Команда sell
 
 def sell_currency(session: AuthSession, currency_code: str, amount: float) -> str:
     """Продаёт валюту currency_code за USD."""
@@ -279,12 +283,12 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
         "автоматически при первой покупке."
     )
     if portfolio is None:
-        raise KeyError(not_found_message)
+        raise LookupError(not_found_message)
 
     try:
         wallet = portfolio.get_wallet(currency_code)
-    except KeyError as e:
-        raise KeyError(not_found_message) from e
+    except LookupError as e:
+        raise LookupError(not_found_message) from e
 
     try:
         rate, _ = get_exchange_rate(currency_code, "USD")
@@ -297,7 +301,7 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
     revenue = amount * rate
     try:
         usd_wallet = portfolio.get_wallet("USD")
-    except KeyError:
+    except LookupError:
         usd_wallet = portfolio.add_currency("USD")
     usd_wallet.deposit(revenue)
 

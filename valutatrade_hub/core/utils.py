@@ -4,14 +4,12 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 
 USERS_FILE = DATA_DIR / "users.json"
 PORTFOLIOS_FILE = DATA_DIR / "portfolios.json"
 RATES_FILE = DATA_DIR / "rates.json"
-
 
 
 def load_json(file_path: Path, default):
@@ -32,7 +30,6 @@ def save_json(file_path: Path, data) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-
 def validate_amount(amount) -> float:
     """Проверяет, что amount - положительное число, и возвращает его как float."""
     if not isinstance(amount, (int, float)) or isinstance(amount, bool):
@@ -49,7 +46,6 @@ def validate_currency_code(code: str) -> str:
     return code.strip().upper()
 
 
-
 def get_next_user_id(users: list[dict]) -> int:
     """Вычисляет следующий свободный user_id."""
     if not users:
@@ -60,4 +56,4 @@ def get_next_user_id(users: list[dict]) -> int:
 def is_rate_fresh(updated_at: str, max_age_minutes: int = 5) -> bool:
     """Проверяет, что курс обновлялся не позднее max_age_minutes назад."""
     updated_dt = datetime.fromisoformat(updated_at)
-    return datetime.now() - updated_dt < timedelta(minutes=max_age_minutes) 
+    return datetime.now() - updated_dt < timedelta(minutes=max_age_minutes)
