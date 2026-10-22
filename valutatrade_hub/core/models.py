@@ -192,3 +192,80 @@ class Wallet:
             currency_code=data["currency_code"],
             balance=data["balance"],
         )
+
+class Portfolio:
+    """Управление всеми кошельками одного пользователя."""
+
+    # заглушка до парсера
+    exchange_rates: dict[str, float] = {
+        "USD": 1.0,
+        "EUR": 1.0786,
+        "BTC": 59337.21,
+        "ETH": 3720.00,
+        "RUB": 0.01016,
+    }
+
+    def __init__(self, user_id: int, wallets: dict[str, Wallet] | None = None) -> None:
+        self._user_id = user_id
+        self._wallets: dict[str, Wallet] = wallets or {}
+
+
+    @property
+    def user(self) -> int:
+        """Возвращает идентификатор владельца портфеля (без возможности перезаписи)."""
+        return self._user_id
+
+    @property
+    def wallets(self) -> dict[str, Wallet]:
+        """Возвращает копию словаря кошельков."""
+        return dict(self._wallets)
+
+
+    def add_currency(self, currency_code: str) -> Wallet:
+        """Добавляет новый кошелёк в портфель, если его ещё нет."""
+        code = currency_code.upper()
+        if code in self._wallets:
+            raise ValueError(f"Кошелёк '{code}' уже существует в портфеле")
+        wallet = Wallet(currency_code=code)
+        self._wallets[code] = wallet
+        return wallet
+
+    def get_wallet(self, currency_code: str) -> Wallet:
+        """Возвращает объект Wallet по коду валюты."""
+        code = currency_code.upper()
+        if code not in self._wallets:
+            raise KeyError(f"У вас нет кошелька '{code}'")
+        return self._wallets[code]
+
+    def get_total_value(self, base_currency: str = "USD") -> float:
+        """Возвращает общую стоимость всех валют портфеля в base_currency."""
+        base_currency = base_currency.upper()
+        if base_currency not in self.exchange_rates:
+            raise ValueError(f"Неизвестная базовая валюта '{base_currency}'")
+
+        total_in_usd = 0.0
+        for code, wallet in self._wallets.items():
+            rate_to_usd = self.exchange_rates.get(code)
+            if rate_to_usd is None:
+                raise ValueError(f"Неизвестный курс для валюты '{code}'")
+            total_in_usd += wallet.balance * rate_to_usd
+
+        base_rate = self.exchange_rates[base_currency]
+        return total_in_usd / base_rate
+
+
+    def to_dict(self) -> dict:
+        return {
+            "user_id": self._user_id,
+            "wallets": {
+                code: wallet.to_dict() for code, wallet in self._wallets.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Portfolio":
+        wallets = {
+            code: Wallet.from_dict(wallet_data)
+            for code, wallet_data in data.get("wallets", {}).items()
+        }
+        return cls(user_id=data["user_id"], wallets=wallets)
