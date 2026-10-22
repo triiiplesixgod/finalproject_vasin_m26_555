@@ -121,3 +121,74 @@ class User:
             salt=data["salt"],
             registration_date=datetime.fromisoformat(data["registration_date"]),
         )
+
+class Wallet:
+    """Кошелёк пользователя для одной конкретной валюты."""
+
+    def __init__(self, currency_code: str, balance: float = 0.0) -> None:
+        self.currency_code = self._validate_currency_code(currency_code)
+        self._balance = 0.0
+        self.balance = balance  
+
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+    @balance.setter
+    def balance(self, value: float) -> None:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise TypeError("Баланс должен быть числом")
+        if value < 0:
+            raise ValueError("Баланс не может быть отрицательным")
+        self._balance = float(value)
+
+
+    @staticmethod
+    def _validate_currency_code(currency_code: str) -> str:
+        if not currency_code or not currency_code.strip():
+            raise ValueError("Код валюты не может быть пустым")
+        return currency_code.upper()
+
+    @staticmethod
+    def _validate_amount(amount: float) -> None:
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            raise TypeError("'amount' должен быть числом")
+        if amount <= 0:
+            raise ValueError("'amount' должен быть положительным числом")
+
+
+    def deposit(self, amount: float) -> None:
+        """Пополняет баланс на указанную сумму."""
+        self._validate_amount(amount)
+        self.balance = self._balance + amount
+
+    def withdraw(self, amount: float) -> None:
+        """Снимает указанную сумму с баланса, если средств достаточно."""
+        self._validate_amount(amount)
+        if amount > self._balance:
+            raise ValueError(
+                f"Недостаточно средств: доступно {self._balance:.4f} "
+                f"{self.currency_code}, требуется {amount:.4f} {self.currency_code}"
+            )
+        self.balance = self._balance - amount
+
+    def get_balance_info(self) -> str:
+        """Выводит информацию о текущем балансе."""
+        info = f"{self.currency_code}: {self._balance:.4f}"
+        print(info)
+        return info
+
+
+    def to_dict(self) -> dict:
+        return {
+            "currency_code": self.currency_code,
+            "balance": self._balance,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Wallet":
+        return cls(
+            currency_code=data["currency_code"],
+            balance=data["balance"],
+        )
