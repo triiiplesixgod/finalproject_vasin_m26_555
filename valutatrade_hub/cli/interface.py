@@ -1,5 +1,11 @@
 import shlex
 
+from valutatrade_hub.core.currencies import list_supported_codes
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import (
     AuthSession,
     buy_currency,
@@ -105,8 +111,6 @@ class CommandLineInterface:
         except ValueError as e:
             raise ValueError(f"'{value}' не является корректным числом") from e
 
-    # ---------- Главный цикл ----------
-
     def run(self) -> None:
         print(WELCOME_MESSAGE)
         while True:
@@ -133,7 +137,29 @@ class CommandLineInterface:
                     continue
                 result = handler(args)
                 print(result)
-            except (ValueError, KeyError, LookupError, PermissionError, TypeError) as e:
+            except InsufficientFundsError as e:
+                print(f"Ошибка: {e}")
+            except CurrencyNotFoundError as e:
+                supported = ", ".join(list_supported_codes())
+                print(
+                    f"Ошибка: {e}\n"
+                    "Подсказка: посмотрите пример использования — "
+                    "'help' (раздел get-rate), либо список поддерживаемых "
+                    f"кодов валют: {supported}"
+                )
+            except ApiRequestError as e:
+                print(
+                    f"Ошибка: {e}\n"
+                    "Попробуйте повторить запрос позже или проверьте "
+                    "подключение к сети."
+                )
+            except (
+                ValueError,
+                KeyError,
+                LookupError,
+                PermissionError,
+                TypeError,
+            ) as e:
                 print(f"Ошибка: {e}")
 
 
