@@ -25,7 +25,10 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
             backupCount=LOG_BACKUP_COUNT,
             encoding="utf-8",
         )
-        formatter = logging.Formatter("%(message)s")
+        formatter = logging.Formatter(
+            fmt="%(levelname)s %(asctime)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         _configured = True
