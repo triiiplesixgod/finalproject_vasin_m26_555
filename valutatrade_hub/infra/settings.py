@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 class SettingsLoader:
     _instance = None
 

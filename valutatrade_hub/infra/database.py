@@ -1,6 +1,7 @@
 from valutatrade_hub.core.utils import load_json, save_json
 from valutatrade_hub.infra.settings import SettingsLoader
 
+
 class DatabaseManager:
     _instance = None
 

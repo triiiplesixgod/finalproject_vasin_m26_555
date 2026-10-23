@@ -1,7 +1,12 @@
 from datetime import datetime
 
 from valutatrade_hub.core import utils
+from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import Portfolio, User
+from valutatrade_hub.decorators import log_action
+from valutatrade_hub.infra.database import DatabaseManager
+from valutatrade_hub.infra.settings import SettingsLoader
 
 
 class AuthSession:
@@ -32,12 +37,12 @@ class AuthSession:
 
 
 def load_users() -> list[User]:
-    raw_users = utils.load_json(utils.USERS_FILE, default=[])
+    raw_users = DatabaseManager().load_users()
     return [User.from_dict(item) for item in raw_users]
 
 
 def save_users(users: list[User]) -> None:
-    utils.save_json(utils.USERS_FILE, [user.to_dict() for user in users])
+    DatabaseManager().save_users([user.to_dict() for user in users])
 
 
 def find_user_by_username(users: list[User], username: str) -> User | None:
@@ -48,14 +53,12 @@ def find_user_by_username(users: list[User], username: str) -> User | None:
 
 
 def load_portfolios() -> list[Portfolio]:
-    raw_portfolios = utils.load_json(utils.PORTFOLIOS_FILE, default=[])
+    raw_portfolios = DatabaseManager().load_portfolios()
     return [Portfolio.from_dict(item) for item in raw_portfolios]
 
 
 def save_portfolios(portfolios: list[Portfolio]) -> None:
-    utils.save_json(
-        utils.PORTFOLIOS_FILE, [portfolio.to_dict() for portfolio in portfolios]
-    )
+    DatabaseManager().save_portfolios([portfolio.to_dict() for portfolio in portfolios])
 
 
 def find_portfolio_by_user_id(
@@ -70,6 +73,7 @@ def find_portfolio_by_user_id(
 # Команда register
 
 
+@log_action("REGISTER")
 def register_user(username: str, password: str) -> str:
     """Регистрирует нового пользователя и создаёт для него пустой портфель."""
     users = load_users()
@@ -96,6 +100,7 @@ def register_user(username: str, password: str) -> str:
 # Команда login
 
 
+@log_action("LOGIN")
 def login_user(session: AuthSession, username: str, password: str) -> str:
     """Выполняет вход пользователя и фиксирует его в сессии."""
     users = load_users()
@@ -115,11 +120,11 @@ def login_user(session: AuthSession, username: str, password: str) -> str:
 
 
 def _compute_fallback_rate(from_currency: str, to_currency: str) -> float:
-    """Вычисляет курс через фиксированные курсы к USD."""
+    """Вычисляет курс через фиксированные курсы к USD (эмуляция внешнего API)."""
     rates_to_usd = Portfolio.exchange_rates
     if from_currency not in rates_to_usd or to_currency not in rates_to_usd:
-        raise LookupError(
-            f"Не удалось получить курс для {from_currency}->{to_currency}"
+        raise ApiRequestError(
+            reason=f"нет данных о курсе для пары {from_currency}->{to_currency}"
         )
     return rates_to_usd[from_currency] / rates_to_usd[to_currency]
 
@@ -129,14 +134,24 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> tuple[float, date
     from_currency = utils.validate_currency_code(from_currency)
     to_currency = utils.validate_currency_code(to_currency)
 
+    get_currency(from_currency)
+    get_currency(to_currency)
+
     if from_currency == to_currency:
         return 1.0, datetime.now()
 
-    rates_data = utils.load_json(utils.RATES_FILE, default={})
+    db = DatabaseManager()
+    settings = SettingsLoader()
+
+    rates_data = db.load_rates()
     pair_key = f"{from_currency}_{to_currency}"
 
     cached = rates_data.get(pair_key)
-    if cached is not None and utils.is_rate_fresh(cached["updated_at"]):
+    max_age_minutes = settings.rates_ttl_seconds / 60
+    cache_is_fresh = cached is not None and utils.is_rate_fresh(
+        cached["updated_at"], max_age_minutes
+    )
+    if cache_is_fresh:
         return cached["rate"], datetime.fromisoformat(cached["updated_at"])
 
     rate = _compute_fallback_rate(from_currency, to_currency)
@@ -145,7 +160,7 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> tuple[float, date
     rates_data[pair_key] = {"rate": rate, "updated_at": now.isoformat()}
     rates_data["source"] = "ParserService"
     rates_data["last_refresh"] = now.isoformat()
-    utils.save_json(utils.RATES_FILE, rates_data)
+    db.save_rates(rates_data)
 
     return rate, now
 
@@ -161,13 +176,8 @@ def get_rate_command(from_currency: str, to_currency: str) -> str:
     from_currency = utils.validate_currency_code(from_currency)
     to_currency = utils.validate_currency_code(to_currency)
 
-    try:
-        rate, updated_at = get_exchange_rate(from_currency, to_currency)
-        reverse_rate, _ = get_exchange_rate(to_currency, from_currency)
-    except LookupError as e:
-        raise LookupError(
-            f"Курс {from_currency}->{to_currency} недоступен. Повторите попытку позже."
-        ) from e
+    rate, updated_at = get_exchange_rate(from_currency, to_currency)
+    reverse_rate, _ = get_exchange_rate(to_currency, from_currency)
 
     timestamp = updated_at.strftime("%Y-%m-%d %H:%M:%S")
     return (
@@ -183,9 +193,7 @@ def get_rate_command(from_currency: str, to_currency: str) -> str:
 def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
     user = session.require_login()
     base_currency = utils.validate_currency_code(base_currency)
-
-    if base_currency not in Portfolio.exchange_rates:
-        raise ValueError(f"Неизвестная базовая валюта '{base_currency}'")
+    get_currency(base_currency)
 
     portfolios = load_portfolios()
     portfolio = find_portfolio_by_user_id(portfolios, user.user_id)
@@ -213,7 +221,10 @@ def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
 # Команда buy
 
 
-def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str:
+@log_action("BUY")
+def buy_currency(
+    session: AuthSession, currency_code: str, amount: float
+) -> tuple[str, dict]:
     """Покупает валюту currency_code за USD."""
     user = session.require_login()
     currency_code = utils.validate_currency_code(currency_code)
@@ -222,17 +233,15 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
     if currency_code == "USD":
         raise ValueError("Нельзя купить USD за USD")
 
+    get_currency(currency_code)
+
     portfolios = load_portfolios()
     portfolio = find_portfolio_by_user_id(portfolios, user.user_id)
     if portfolio is None:
         portfolio = Portfolio(user_id=user.user_id)
         portfolios.append(portfolio)
 
-    try:
-        rate, _ = get_exchange_rate(currency_code, "USD")
-    except LookupError as e:
-        raise LookupError(f"Не удалось получить курс для {currency_code}->USD") from e
-
+    rate, _ = get_exchange_rate(currency_code, "USD")
     cost = amount * rate
 
     try:
@@ -240,7 +249,8 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
     except LookupError:
         usd_wallet = portfolio.add_currency("USD")
 
-    usd_wallet.withdraw(cost)  # выбросит ValueError, если средств не хватает
+    # withdraw бросит InsufficientFundsError, если средств не хватает
+    usd_wallet.withdraw(cost)
 
     try:
         target_wallet = portfolio.get_wallet(currency_code)
@@ -252,7 +262,7 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
 
     save_portfolios(portfolios)
 
-    return (
+    message = (
         f"Покупка выполнена: {amount:.4f} {currency_code} по курсу "
         f"{rate:.2f} USD/{currency_code}\n"
         f"Изменения в портфеле:\n"
@@ -261,12 +271,22 @@ def buy_currency(session: AuthSession, currency_code: str, amount: float) -> str
         f"- USD: списано {cost:,.2f}\n"
         f"Оценочная стоимость покупки: {cost:,.2f} USD"
     )
+    log_extra = {
+        "rate": rate,
+        "base": "USD",
+        "old_balance": old_balance,
+        "new_balance": target_wallet.balance,
+    }
+    return message, log_extra
 
 
 # Команда sell
 
 
-def sell_currency(session: AuthSession, currency_code: str, amount: float) -> str:
+@log_action("SELL")
+def sell_currency(
+    session: AuthSession, currency_code: str, amount: float
+) -> tuple[str, dict]:
     """Продаёт валюту currency_code за USD."""
     user = session.require_login()
     currency_code = utils.validate_currency_code(currency_code)
@@ -274,6 +294,8 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
 
     if currency_code == "USD":
         raise ValueError("Нельзя продать USD за USD")
+
+    get_currency(currency_code)
 
     portfolios = load_portfolios()
     portfolio = find_portfolio_by_user_id(portfolios, user.user_id)
@@ -290,13 +312,11 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
     except LookupError as e:
         raise LookupError(not_found_message) from e
 
-    try:
-        rate, _ = get_exchange_rate(currency_code, "USD")
-    except LookupError as e:
-        raise LookupError(f"Не удалось получить курс для {currency_code}->USD") from e
+    rate, _ = get_exchange_rate(currency_code, "USD")
 
     old_balance = wallet.balance
-    wallet.withdraw(amount)  # выбросит ValueError, если средств недостаточно
+    # withdraw бросит InsufficientFundsError, если средств недостаточно
+    wallet.withdraw(amount)
 
     revenue = amount * rate
     try:
@@ -307,7 +327,7 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
 
     save_portfolios(portfolios)
 
-    return (
+    message = (
         f"Продажа выполнена: {amount:.4f} {currency_code} по курсу "
         f"{rate:.2f} USD/{currency_code}\n"
         f"Изменения в портфеле:\n"
@@ -315,3 +335,10 @@ def sell_currency(session: AuthSession, currency_code: str, amount: float) -> st
         f"- USD: зачислено {revenue:,.2f}\n"
         f"Оценочная выручка: {revenue:,.2f} USD"
     )
+    log_extra = {
+        "rate": rate,
+        "base": "USD",
+        "old_balance": old_balance,
+        "new_balance": wallet.balance,
+    }
+    return message, log_extra

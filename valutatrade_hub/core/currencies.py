@@ -47,9 +47,7 @@ class FiatCurrency(Currency):
 class CryptoCurrency(Currency):
     """Криптовалюта"""
 
-    def __init__(
-        self, name: str, code: str, algorithm: str, market_cap: float
-    ) -> None:
+    def __init__(self, name: str, code: str, algorithm: str, market_cap: float) -> None:
         super().__init__(name=name, code=code)
         self.algorithm = algorithm
         self.market_cap = market_cap

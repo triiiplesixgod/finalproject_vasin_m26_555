@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from valutatrade_hub.infra.settings import SettingsLoader
 
 LOG_MAX_BYTES = 1_000_000
-LOG_BACKUP_COUNT = 3 
+LOG_BACKUP_COUNT = 3
 
 _configured = False
 
