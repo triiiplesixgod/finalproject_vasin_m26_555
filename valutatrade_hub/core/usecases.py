@@ -233,16 +233,15 @@ def show_portfolio(session: AuthSession, base_currency: str = "USD") -> str:
         return f"У пользователя '{user.username}' пока нет кошельков."
 
     lines = [f"Портфель пользователя '{user.username}' (база: {base_currency}):"]
+    total = 0.0
     for code, wallet in sorted(portfolio.wallets.items()):
-        rate_to_base = (
-            Portfolio.exchange_rates[code] / Portfolio.exchange_rates[base_currency]
-        )
+        rate_to_base, _ = get_exchange_rate(code, base_currency)
         value_in_base = wallet.balance * rate_to_base
+        total += value_in_base
         lines.append(
             f"- {code}: {wallet.balance:.4f}  -> {value_in_base:.2f} {base_currency}"
         )
 
-    total = portfolio.get_total_value(base_currency)
     lines.append("-" * 35)
     lines.append(f"ИТОГО: {total:,.2f} {base_currency}")
 
