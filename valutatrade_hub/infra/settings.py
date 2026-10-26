@@ -23,6 +23,7 @@ class SettingsLoader:
 
         self.logs_dir: Path = self.project_root / "logs"
         self.log_file: Path = self.logs_dir / "actions.log"
+        self.parser_log_file: Path = self.logs_dir / "parser.log"
 
         self.rates_ttl_seconds: int = 300
         self.default_base_currency: str = "USD"
