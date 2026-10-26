@@ -6,7 +6,8 @@ from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import Portfolio, User
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
-from valutatrade_hub.infra.settings import SettingsLoader
+from valutatrade_hub.parser_service.storage import RatesStorage
+from valutatrade_hub.parser_service.config import ParserConfig
 
 
 class AuthSession:
@@ -119,18 +120,65 @@ def login_user(session: AuthSession, username: str, password: str) -> str:
 # Курсы валют
 
 
-def _compute_fallback_rate(from_currency: str, to_currency: str) -> float:
-    """Вычисляет курс через фиксированные курсы к USD (эмуляция внешнего API)."""
-    rates_to_usd = Portfolio.exchange_rates
-    if from_currency not in rates_to_usd or to_currency not in rates_to_usd:
+def _get_usd_quote(pairs: dict, code: str) -> dict | None:
+    """Возвращает сырую котировку CODE_USD из снимка Parser Service"""
+    if code == "USD":
+        return {"rate": 1.0, "updated_at": None, "source": None}
+    return pairs.get(f"{code}_USD")
+
+
+def _usd_price(code: str, quote: dict, config: ParserConfig) -> float:
+    """Приводит сохранённую котировку к единому базису "USD за 1 CODE"."""
+    if code == "USD":
+        return 1.0
+    if code in config.CRYPTO_CURRENCIES:
+        return quote["rate"]
+    if code in config.FIAT_CURRENCIES:
+        return 1.0 / quote["rate"]
+    raise ApiRequestError(
+        reason=f"неизвестна конвенция хранения курса для валюты '{code}'"
+    )
+
+
+def _compute_fallback_rate(
+    from_currency: str, to_currency: str
+) -> tuple[float, str | None, str]:
+    """Строит курс from_currency->to_currency по снимку Parser Service"""
+    config = ParserConfig()
+    storage = RatesStorage()
+    snapshot = storage.load_rates_snapshot()
+    pairs = snapshot["pairs"]
+
+    from_quote = _get_usd_quote(pairs, from_currency)
+    to_quote = _get_usd_quote(pairs, to_currency)
+
+    if from_quote is None or to_quote is None:
+        missing = from_currency if from_quote is None else to_currency
         raise ApiRequestError(
-            reason=f"нет данных о курсе для пары {from_currency}->{to_currency}"
+            reason=(
+                f"нет данных о курсе для '{missing}' в кэше Parser Service "
+                "(data/rates.json). Выполните команду update-rates"
+            )
         )
-    return rates_to_usd[from_currency] / rates_to_usd[to_currency]
+
+    from_usd = _usd_price(from_currency, from_quote, config)
+    to_usd = _usd_price(to_currency, to_quote, config)
+    rate = from_usd / to_usd
+
+    timestamps = [
+        q["updated_at"] for q in (from_quote, to_quote) if q["updated_at"] is not None
+    ]
+    updated_at = min(timestamps) if timestamps else None
+
+    sources = {
+        q["source"] for q in (from_quote, to_quote) if q.get("source") is not None
+    }
+    source = ", ".join(sorted(sources)) if sources else "ParserService"
+
+    return rate, updated_at, source
 
 
 def get_exchange_rate(from_currency: str, to_currency: str) -> tuple[float, datetime]:
-    """Возвращает курс валютной пары и время последнего обновления."""
     from_currency = utils.validate_currency_code(from_currency)
     to_currency = utils.validate_currency_code(to_currency)
 
@@ -140,33 +188,16 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> tuple[float, date
     if from_currency == to_currency:
         return 1.0, datetime.now()
 
-    db = DatabaseManager()
-    settings = SettingsLoader()
+    rate, updated_at_raw, _source = _compute_fallback_rate(from_currency, to_currency)
 
-    rates_data = db.load_rates()
-    pair_key = f"{from_currency}_{to_currency}"
+    if updated_at_raw is not None:
+        updated_at = datetime.strptime(updated_at_raw, "%Y-%m-%dT%H:%M:%SZ")
+    else:
+        updated_at = datetime.now()
 
-    cached = rates_data.get(pair_key)
-    max_age_minutes = settings.rates_ttl_seconds / 60
-    cache_is_fresh = cached is not None and utils.is_rate_fresh(
-        cached["updated_at"], max_age_minutes
-    )
-    if cache_is_fresh:
-        return cached["rate"], datetime.fromisoformat(cached["updated_at"])
-
-    rate = _compute_fallback_rate(from_currency, to_currency)
-    now = datetime.now()
-
-    rates_data[pair_key] = {"rate": rate, "updated_at": now.isoformat()}
-    rates_data["source"] = "ParserService"
-    rates_data["last_refresh"] = now.isoformat()
-    db.save_rates(rates_data)
-
-    return rate, now
-
+    return rate, updated_at
 
 def _format_rate(value: float) -> str:
-    """Форматирует курс: крупные числа - с двумя знаками, мелкие - с восемью."""
     if value >= 1:
         return f"{value:.2f}"
     return f"{value:.8f}"
