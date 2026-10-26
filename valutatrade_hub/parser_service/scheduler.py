@@ -21,9 +21,7 @@ def run_scheduler(interval_seconds: int | None = None) -> None:
         storage=RatesStorage(),
     )
 
-    logger.info(
-        "Scheduler запущен. Интервал обновления: %d секунд.", interval_seconds
-    )
+    logger.info("Scheduler запущен. Интервал обновления: %d секунд.", interval_seconds)
 
     try:
         while True:

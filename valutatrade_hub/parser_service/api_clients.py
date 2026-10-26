@@ -8,7 +8,6 @@ from valutatrade_hub.parser_service.config import ParserConfig
 
 
 class BaseApiClient(ABC):
-
     SOURCE_NAME: str = ""
 
     @abstractmethod
@@ -17,7 +16,6 @@ class BaseApiClient(ABC):
 
 
 class CoinGeckoClient(BaseApiClient):
-
     SOURCE_NAME: str = "CoinGecko"
 
     def __init__(self, config: ParserConfig | None = None) -> None:
@@ -81,7 +79,6 @@ class CoinGeckoClient(BaseApiClient):
 
 
 class ExchangeRateApiClient(BaseApiClient):
-
     SOURCE_NAME: str = "ExchangeRate-API"
 
     def __init__(self, config: ParserConfig | None = None) -> None:

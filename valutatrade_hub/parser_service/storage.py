@@ -37,7 +37,6 @@ def _atomic_write_json(file_path: Path, data: object) -> None:
 
 
 class RatesStorage:
-
     def __init__(self, config: ParserConfig | None = None) -> None:
         self._config = config or ParserConfig()
         self._rates_file = Path(self._config.RATES_FILE_PATH)

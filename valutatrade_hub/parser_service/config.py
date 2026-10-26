@@ -23,7 +23,6 @@ class ParserConfig:
         default_factory=lambda: os.getenv("EXCHANGERATE_API_KEY")
     )
 
-
     COINGECKO_URL: str = "https://api.coingecko.com/api/v3/simple/price"
     EXCHANGERATE_API_URL: str = "https://v6.exchangerate-api.com/v6"
 
