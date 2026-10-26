@@ -6,8 +6,8 @@ from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import Portfolio, User
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
-from valutatrade_hub.parser_service.storage import RatesStorage
 from valutatrade_hub.parser_service.config import ParserConfig
+from valutatrade_hub.parser_service.storage import RatesStorage
 
 
 class AuthSession:
@@ -196,6 +196,7 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> tuple[float, date
         updated_at = datetime.now()
 
     return rate, updated_at
+
 
 def _format_rate(value: float) -> str:
     if value >= 1:
