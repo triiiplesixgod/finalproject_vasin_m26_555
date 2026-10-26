@@ -19,6 +19,7 @@ class SettingsLoader:
         self.users_file: Path = self.data_dir / "users.json"
         self.portfolios_file: Path = self.data_dir / "portfolios.json"
         self.rates_file: Path = self.data_dir / "rates.json"
+        self.history_file: Path = self.data_dir / "exchange_rates.json"
 
         self.logs_dir: Path = self.project_root / "logs"
         self.log_file: Path = self.logs_dir / "actions.log"
