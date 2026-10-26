@@ -2,7 +2,7 @@ from datetime import datetime
 
 from valutatrade_hub.core import utils
 from valutatrade_hub.core.currencies import get_currency
-from valutatrade_hub.core.exceptions import ApiRequestError
+from valutatrade_hub.core.exceptions import ApiRequestError, CurrencyNotFoundError
 from valutatrade_hub.core.models import Portfolio, User
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
@@ -217,6 +217,30 @@ def get_rate_command(from_currency: str, to_currency: str) -> str:
         f"(обновлено: {timestamp})\n"
         f"Обратный курс {to_currency}->{from_currency}: {_format_rate(reverse_rate)}"
     )
+
+
+def list_rates(base_currency: str = "USD") -> list[dict]:
+    base_currency = utils.validate_currency_code(base_currency)
+    get_currency(base_currency)
+
+    storage = RatesStorage()
+    snapshot = storage.load_rates_snapshot()
+    pairs = snapshot["pairs"]
+
+    codes = sorted({key.split("_")[0] for key in pairs} | {"USD"})
+
+    result: list[dict] = []
+    for code in codes:
+        if code == base_currency:
+            continue
+        try:
+            get_currency(code)
+        except CurrencyNotFoundError:
+            continue
+        rate, updated_at = get_exchange_rate(code, base_currency)
+        result.append({"currency": code, "rate": rate, "updated_at": updated_at})
+
+    return result
 
 
 # Команда show-portfolio
